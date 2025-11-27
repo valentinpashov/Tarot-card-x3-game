@@ -4,9 +4,10 @@ import { GameState, MultiplierData, GameSpeed } from './types';
 import { PAY_TABLE, BET_OPTIONS } from './config'; 
 import gsap from 'gsap';
 
-// Assets imports...
 // @ts-ignore
-import tableImg from './assets/table.png';
+import bgImg from './assets/background.png'; 
+// @ts-ignore
+import tableImg from './assets/table.png'; 
 // @ts-ignore
 import back1 from './assets/back1.png'; 
 // @ts-ignore
@@ -22,27 +23,26 @@ import front3 from './assets/front3.png';
 
 export class Game {
     private app: PIXI.Application;
-    private cards: Card[] = [];
-    private state: GameState = GameState.IDLE;
-    private currentSpeed: GameSpeed = GameSpeed.NORMAL;
-    private isAutoPlaying: boolean = false;
     
-    // Bet
-    private currentBetIndex: number = 1;
+    private bgSprite: PIXI.Sprite | null = null;
+    private tableMesh: PIXI.MeshPlane | null = null;
+    
+    private cardsContainer: PIXI.Container;
+    private cards: Card[] = [];
     
     private uiContainer: PIXI.Container;
-    private cardsContainer: PIXI.Container;
-    private bgSprite: PIXI.Sprite | null = null;
-
-    // UI elements
     private playButton!: PIXI.Container;
     private payTableButton!: PIXI.Container;
     private speedButton!: PIXI.Container;
     private autoButton!: PIXI.Container;
     private betButton!: PIXI.Container; 
-    
     private payTablePopup!: PIXI.Container;
     private resultText!: PIXI.Text;
+
+    private state: GameState = GameState.IDLE;
+    private currentSpeed: GameSpeed = GameSpeed.NORMAL;
+    private isAutoPlaying: boolean = false;
+    private currentBetIndex: number = 1;
 
     constructor(app: PIXI.Application) {
         this.app = app;
@@ -57,13 +57,14 @@ export class Game {
 
     private async loadAssets() {
         await PIXI.Assets.load([
-            { alias: 'table', src: tableImg },
+            { alias: 'bg_room', src: bgImg },
+            { alias: 'table_mesh', src: tableImg },
             { alias: 'back1', src: back1 }, { alias: 'front1', src: front1 },
             { alias: 'back2', src: back2 }, { alias: 'front2', src: front2 },
             { alias: 'back3', src: back3 }, { alias: 'front3', src: front3 },
         ]);
         
-        this.initBackground();
+        this.initScene(); 
         this.initCards();
         this.initUI();
         this.initPayTablePopup();
@@ -71,63 +72,128 @@ export class Game {
         this.resize(this.app.screen.width, this.app.screen.height);
     }
 
+    private initScene() {
+        // 1. Bg
+        this.bgSprite = PIXI.Sprite.from('bg_room');
+        this.bgSprite.anchor.set(0.5);
+        this.app.stage.addChildAt(this.bgSprite, 0); 
+
+        // 2. table
+        const tableTex = PIXI.Assets.get('table_mesh');
+
+        if (tableTex.source.style) {
+            tableTex.source.style.addressMode = 'clamp-to-edge';
+        }
+        
+        this.tableMesh = new PIXI.MeshPlane({
+            texture: tableTex,
+            verticesX: 2, 
+            verticesY: 2
+        });
+        
+        this.tableMesh.pivot.set(tableTex.width / 2, tableTex.height);
+        this.app.stage.addChildAt(this.tableMesh, 1); 
+    }
+
+    private applyTablePerspective() {
+        if (!this.tableMesh) return;
+        
+        const buffer = this.tableMesh.geometry.getAttribute('aPosition').buffer;
+        const w = this.tableMesh.texture.width;
+        
+        buffer.data[0] = 0;   // TL x
+        buffer.data[2] = w;   // TR x
+        
+        const perspective = w * 0.12; 
+        buffer.data[0] += perspective; 
+        buffer.data[2] -= perspective; 
+        
+        buffer.update();
+    }
+
     public resize(width: number, height: number) {
         const centerX = width / 2;
         const centerY = height / 2;
         const isMobile = width < height;
 
-        // Background
+        // Rеsize bg
         if (this.bgSprite) {
             this.bgSprite.position.set(centerX, centerY);
-            const scale = Math.max(width / this.bgSprite.texture.width, height / this.bgSprite.texture.height);
+            const scale = Math.max(width / this.bgSprite.width, height / this.bgSprite.height);
             this.bgSprite.scale.set(scale);
         }
 
-        // Cards 
-        const logicalWidth = 1100; 
-        let scale = ((width * 0.9) / logicalWidth) * 0.5;
-        if (scale > 0.3) scale = 0.3; 
-        if (scale < 0.15) scale = 0.15;
+        // Rеsize table
+        let tableTopY = centerY; 
 
-        this.cardsContainer.scale.set(scale);
-        this.cardsContainer.position.set(centerX, centerY - (isMobile ? 20 : 50));
+        if (this.tableMesh) {
+            const baseBottomPos = height + (isMobile ? 120 : 250);
+            const shiftUpAmount = height / 5; 
+            
+            this.tableMesh.position.set(centerX, baseBottomPos - shiftUpAmount);
+
+            let targetWidth = width * 2.17;
+            
+            let tableScale = targetWidth / this.tableMesh.texture.width;
+            tableScale = Math.min(tableScale, 2.2); 
+            tableScale = Math.max(tableScale, isMobile ? 0.4 : 0.6);
+
+            this.tableMesh.scale.set(tableScale);
+            this.applyTablePerspective();
+
+            tableTopY = this.tableMesh.y - (this.tableMesh.texture.height * tableScale * 0.5);
+        }
+
+        // Rеsize cards 
+        const logicalWidth = 1100; 
+        
+        let cardScale = ((width * 0.9) / logicalWidth) * 0.22; 
+        
+        if (cardScale > 0.23) cardScale = 0.23; 
+        if (cardScale < 0.1) cardScale = 0.1; 
+
+        this.cardsContainer.scale.set(cardScale);
+        
+        const liftCardsUp = isMobile ? 30 : 60;
+        this.cardsContainer.position.set(centerX, tableTopY - liftCardsUp + 50);
+
+        this.cards.forEach(card => {
+            card.setPerspective(0.12); 
+        });
+
+        // UI
         const bottomY = height - (isMobile ? 120 : 80);
         
-        // PLAY button - center bottom
         if (this.playButton) {
             this.playButton.position.set(centerX, bottomY);
             this.playButton.scale.set(isMobile ? 0.8 : 1);
         }
 
         const sideOffset = isMobile ? 110 : 180; 
-
-        // BET button - left of Play
         if (this.betButton) {
             this.betButton.position.set(centerX - sideOffset, bottomY);
             this.betButton.scale.set(isMobile ? 0.6 : 0.8);
         }
-
-        // AUTO button - right of Play
         if (this.autoButton) {
             this.autoButton.position.set(centerX + sideOffset, bottomY);
             this.autoButton.scale.set(isMobile ? 0.6 : 0.8);
         }
-
-        // PAY TABLE button - top left
         if (this.payTableButton) {
             this.payTableButton.position.set(isMobile ? 60 : 100, 50);
             this.payTableButton.scale.set(isMobile ? 0.6 : 0.8);
         }
-
-        // SPEED button - top left below PAY
         if (this.speedButton) {
            this.speedButton.position.set(isMobile ? 60 : 100, 130);
             this.speedButton.scale.set(isMobile ? 0.6 : 0.8);
         }
 
+        // PAYOUT text 
         if (this.resultText) {
-            this.resultText.position.set(centerX, centerY + (isMobile ? 60 : 100));
-            this.resultText.style.fontSize = isMobile ? 30 : 40;
+            const distAboveCards = (isMobile ? 200 : 350) * cardScale * 2.8;
+            const textY = (tableTopY - liftCardsUp) - distAboveCards - 50; 
+            
+            this.resultText.position.set(centerX, textY); 
+            this.resultText.style.fontSize = isMobile ? 40 : 60;
         }
 
         if (this.payTablePopup) {
@@ -136,28 +202,22 @@ export class Game {
             this.payTablePopup.scale.set(popupScale);
         }
     }
-
-    private initBackground() {
-        this.bgSprite = PIXI.Sprite.from('table');
-        this.bgSprite.anchor.set(0.5);
-        this.app.stage.addChildAt(this.bgSprite, 0); 
-    }
-
+    
+    // Helper methods
     private initCards() {
-        const gap = 700; 
+        const gap = 550; 
         for (let i = 0; i < 3; i++) {
             const card = new Card(`back${i+1}`, `front${i+1}`);
             card.x = (i - 1) * gap; 
             card.y = 0;
-            if (i === 0) card.rotation = -0.15;
-            if (i === 2) card.rotation = 0.15;
+            if (i === 0) card.rotation = -0.03;
+            if (i === 2) card.rotation = 0.03;
             this.cards.push(card);
             this.cardsContainer.addChild(card); 
         }
     }
 
     private initUI() {
-        // PLAY Button
         this.playButton = this.createButton("PLAY", 0xFFD700, 180, 70, 30);
         this.playButton.on('pointerdown', () => {
             if (this.isAutoPlaying) this.toggleAuto();
@@ -165,40 +225,51 @@ export class Game {
         });
         this.uiContainer.addChild(this.playButton);
 
-        // BET button 
         const initialBet = BET_OPTIONS[this.currentBetIndex];
-        this.betButton = this.createButton(`BET: $${initialBet}`, 0xFFD700, 140, 60, 20); // LightSeaGreen цвят
+        this.betButton = this.createButton(`BET: $${initialBet}`, 0xFFD700, 140, 60, 20); 
         this.betButton.on('pointerdown', () => this.cycleBet());
         this.uiContainer.addChild(this.betButton);
 
-        // AUTO button
         this.autoButton = this.createButton("AUTO: OFF", 0xFF6347, 140, 60, 20); 
         this.autoButton.on('pointerdown', () => this.toggleAuto());
         this.uiContainer.addChild(this.autoButton);
 
-        // SPEED button
         this.speedButton = this.createButton("SPEED: 1x", 0xFFD700, 150, 50, 20);
         this.speedButton.on('pointerdown', () => this.cycleSpeed());
         this.uiContainer.addChild(this.speedButton);
 
-        // PAY Button
         this.payTableButton = this.createButton("PAY TABLE", 0xBD9A7A, 150, 50, 20);
         this.payTableButton.on('pointerdown', () => this.togglePayTable());
         this.uiContainer.addChild(this.payTableButton);
 
-        // Result Text
         this.resultText = new PIXI.Text({
             text: "", 
             style: {
-                fontSize: 40, fill: 0xFFFFFF, 
-                stroke: {color: 0x000000, width: 6 },
-                dropShadow: { blur: 4, color: 0x000000, alpha: 0.5, distance: 2 }
+                fontSize: 60, fill: 0xFFFFFF, 
+                stroke: {color: 0x000000, width: 4 },
+                dropShadow: { blur: 2, color: 0x000000, alpha: 0.3, distance: 3 },
+                align: 'center'
             }
         });
         this.resultText.anchor.set(0.5);
         this.uiContainer.addChild(this.resultText);
     }
-
+    
+    private createButton(label: string, color: number, w=200, h=70, fontSize=30): PIXI.Container {
+        const btn = new PIXI.Container();
+        const bg = new PIXI.Graphics()
+            .roundRect(-w/2, -h/2, w, h, 15)
+            .fill(color)
+            .stroke({ width: 3, color: 0xFFFFFF });
+        
+        const txt = new PIXI.Text({ text: label, style: { fontSize, fontWeight: 'bold' } });
+        txt.anchor.set(0.5);
+        btn.addChild(bg, txt);
+        btn.interactive = true;
+        btn.cursor = 'pointer';
+        return btn;
+    }
+    
     private updateButtonText(btnContainer: PIXI.Container, text: string, color?: number) {
         const txt = btnContainer.getChildAt(1) as PIXI.Text;
         if (txt) txt.text = text;
@@ -213,23 +284,15 @@ export class Game {
 
     private cycleBet() {
         if (this.state !== GameState.IDLE && this.state !== GameState.RESULT) return;
-        
-        if (this.isAutoPlaying){ 
-            this.toggleAuto();
-        }
-
+        if (this.isAutoPlaying) this.toggleAuto();
         this.currentBetIndex++;
-        if (this.currentBetIndex >= BET_OPTIONS.length) {
-            this.currentBetIndex = 0;
-        }
-
+        if (this.currentBetIndex >= BET_OPTIONS.length) this.currentBetIndex = 0;
         const newBet = BET_OPTIONS[this.currentBetIndex];
         this.updateButtonText(this.betButton, `BET: $${newBet}`);
     }
 
     private cycleSpeed() {
         if (this.state !== GameState.IDLE && this.state !== GameState.RESULT) return;
-
         if (this.currentSpeed === GameSpeed.NORMAL) {
             this.currentSpeed = GameSpeed.FAST;
             this.updateButtonText(this.speedButton, "SPEED: 2x");
@@ -253,22 +316,7 @@ export class Game {
             this.updateButtonText(this.playButton, "PLAY");
         }
     }
-
-    private createButton(label: string, color: number, w=200, h=70, fontSize=30): PIXI.Container {
-        const btn = new PIXI.Container();
-        const bg = new PIXI.Graphics()
-            .roundRect(-w/2, -h/2, w, h, 15)
-            .fill(color)
-            .stroke({ width: 3, color: 0xFFFFFF });
-        
-        const txt = new PIXI.Text({ text: label, style: { fontSize, fontWeight: 'bold' } });
-        txt.anchor.set(0.5);
-        btn.addChild(bg, txt);
-        btn.interactive = true;
-        btn.cursor = 'pointer';
-        return btn;
-    }
-
+    
     private initPayTablePopup() {
         this.payTablePopup = new PIXI.Container();
         this.payTablePopup.visible = false;
@@ -280,10 +328,7 @@ export class Game {
         
         let yPos = 70;
         PAY_TABLE.forEach(item => {
-            const row = new PIXI.Text({ 
-                text: `${item.value}x  -  Chance: ${item.chance}%`, 
-                style: { fill: 0xFFD700, fontSize: 18 } 
-            });
+            const row = new PIXI.Text({ text: `${item.value}x  -  Chance: ${item.chance}%`, style: { fill: 0xFFD700, fontSize: 18 } });
             row.position.set(20, yPos);
             this.payTablePopup.addChild(row);
             yPos += 30;
@@ -298,7 +343,6 @@ export class Game {
         this.payTablePopup.pivot.set(200, 250); 
         this.uiContainer.addChild(this.payTablePopup);
     }
-    
     private togglePayTable() { this.payTablePopup.visible = !this.payTablePopup.visible; }
     
     private getRandomMultiplier(): MultiplierData {
@@ -313,52 +357,38 @@ export class Game {
 
     private async startRound() {
         if (this.state !== GameState.IDLE) return;
-        
         this.state = GameState.ROUND_START;
-        this.payTableButton.visible = false;  // invisible 
-        this.speedButton.visible = false;  // invisible
-        this.betButton.visible = false;  // invisible
-        this.payTablePopup.visible = false;  // invisible
-        
-        if (!this.isAutoPlaying) {
-            this.playButton.visible = false;
-        }
+
+        this.uiContainer.children.forEach(c => { 
+            if (c === this.resultText) return;
+
+            if (this.isAutoPlaying && (c === this.playButton || c === this.autoButton)) {
+                c.visible = true;
+                return;
+            }
+            c.visible = false; 
+        }); 
 
         this.resultText.text = "";
         this.cards.forEach(c => c.reset());
 
-        const results = [
-            this.getRandomMultiplier(),
-            this.getRandomMultiplier(),
-            this.getRandomMultiplier()
-        ];
+        const results = [ this.getRandomMultiplier(), this.getRandomMultiplier(), this.getRandomMultiplier() ];
         this.cards.forEach((card, i) => card.setOutcome(results[i]));
-
         this.state = GameState.REVEAL;
 
-        let flipDuration = 0.5;
-        let staggerDelay = 300; 
-
-        if (this.currentSpeed === GameSpeed.FAST) {
-            flipDuration = 0.25;
-            staggerDelay = 150;
-        } else if (this.currentSpeed === GameSpeed.INSTANT) {
-            flipDuration = 0;
-            staggerDelay = 0;
-        }
+        let flipDuration = (this.currentSpeed === GameSpeed.INSTANT) ? 0 : ((this.currentSpeed === GameSpeed.FAST) ? 0.25 : 0.5);
+        let staggerDelay = (this.currentSpeed === GameSpeed.INSTANT) ? 0 : ((this.currentSpeed === GameSpeed.FAST) ? 150 : 300);
 
         for (let i = 0; i < 3; i++) {
             if (staggerDelay > 0) await new Promise(r => setTimeout(r, staggerDelay));
             await this.cards[i].flip(flipDuration);
         }
-
         this.showResult(results);
     }
 
     private showResult(results: MultiplierData[]) {
         this.state = GameState.RESULT;
         const totalMultiplier = results.reduce((acc, curr) => acc * curr.value, 1);
-        
         const currentBetAmount = BET_OPTIONS[this.currentBetIndex];
         const payout = currentBetAmount * totalMultiplier;
 
@@ -368,16 +398,12 @@ export class Game {
         const animDuration = (this.currentSpeed === GameSpeed.INSTANT) ? 0.2 : 0.5;
         gsap.to(this.resultText.scale, { x: 1, y: 1, duration: animDuration, ease: "back.out(1.7)" });
 
-        let waitTime = 2000;
-        if (this.currentSpeed === GameSpeed.FAST) waitTime = 1500;
-        if (this.currentSpeed === GameSpeed.INSTANT) waitTime = 1000;
+        let waitTime = (this.currentSpeed === GameSpeed.INSTANT) ? 500 : ((this.currentSpeed === GameSpeed.FAST) ? 1000 : 1500);
 
         setTimeout(() => {
             this.state = GameState.IDLE;
-            this.speedButton.visible = true;
-            this.payTableButton.visible = true;
-            this.betButton.visible = true; 
-            
+            this.uiContainer.children.forEach(c => c.visible = true);
+            this.payTablePopup.visible = false; 
             if (this.isAutoPlaying) {
                 this.startRound();
             } else {
