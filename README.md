@@ -37,6 +37,8 @@ If Auto-Play is inactive: The game returns to Idle.
 Images were generated with Gemini Nano Banana.
 I used Gemini to help me with button design
 I asked AI about some function logic, gsap, multipliers.
+While integrating Pixi-Projection, I used AI tools to research best practices and explore available approaches.
+
     
 4: I think good ideas for the future are:
 History of rounds
