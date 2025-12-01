@@ -4,6 +4,7 @@ import { GameState, MultiplierData, GameSpeed } from './types';
 import { PAY_TABLE, BET_OPTIONS } from './config'; 
 import gsap from 'gsap';
 
+// --- ИМПОРТ НА КАРТИНКИ (ASSETS) ---
 // @ts-ignore
 import bgImg from './assets/background.png'; 
 // @ts-ignore
@@ -21,6 +22,21 @@ import back3 from './assets/back3.png';
 // @ts-ignore
 import front3 from './assets/front3.png';
 
+// Бутони
+// @ts-ignore
+import playBtnImg from './assets/playbutton.png';
+// @ts-ignore
+import stopBtnImg from './assets/stopbutton.png'; 
+// @ts-ignore
+import autoBtnImg from './assets/autobutton.png';
+// @ts-ignore
+import betBtnImg from './assets/betbutton.png';
+// @ts-ignore
+import speedBtnImg from './assets/speedbutton.png';
+// @ts-ignore
+import payTableBtnImg from './assets/paytablebutton.png';
+
+
 export class Game {
     private app: PIXI.Application;
     
@@ -31,13 +47,17 @@ export class Game {
     private cards: Card[] = [];
     
     private uiContainer: PIXI.Container;
+    
+    // UI Елементи
     private playButton!: PIXI.Container;
     private payTableButton!: PIXI.Container;
     private speedButton!: PIXI.Container;
     private autoButton!: PIXI.Container;
     private betButton!: PIXI.Container; 
+    
     private payTablePopup!: PIXI.Container;
     private resultText!: PIXI.Text;
+    private currentBetText!: PIXI.Text;
 
     private state: GameState = GameState.IDLE;
     private currentSpeed: GameSpeed = GameSpeed.NORMAL;
@@ -59,9 +79,17 @@ export class Game {
         await PIXI.Assets.load([
             { alias: 'bg_room', src: bgImg },
             { alias: 'table_mesh', src: tableImg },
+            // Карти
             { alias: 'back1', src: back1 }, { alias: 'front1', src: front1 },
             { alias: 'back2', src: back2 }, { alias: 'front2', src: front2 },
             { alias: 'back3', src: back3 }, { alias: 'front3', src: front3 },
+            // Бутони
+            { alias: 'btn_play', src: playBtnImg },
+            { alias: 'btn_stop', src: stopBtnImg },
+            { alias: 'btn_auto', src: autoBtnImg },
+            { alias: 'btn_bet', src: betBtnImg },
+            { alias: 'btn_speed', src: speedBtnImg },
+            { alias: 'btn_paytable', src: payTableBtnImg },
         ]);
         
         this.initScene(); 
@@ -73,14 +101,13 @@ export class Game {
     }
 
     private initScene() {
-        // 1. Bg
+        // 1. Background
         this.bgSprite = PIXI.Sprite.from('bg_room');
         this.bgSprite.anchor.set(0.5);
         this.app.stage.addChildAt(this.bgSprite, 0); 
 
-        // 2. table
+        // 2. Table
         const tableTex = PIXI.Assets.get('table_mesh');
-
         if (tableTex.source.style) {
             tableTex.source.style.addressMode = 'clamp-to-edge';
         }
@@ -116,14 +143,14 @@ export class Game {
         const centerY = height / 2;
         const isMobile = width < height;
 
-        // Rеsize bg
+        // Resize Background
         if (this.bgSprite) {
             this.bgSprite.position.set(centerX, centerY);
             const scale = Math.max(width / this.bgSprite.width, height / this.bgSprite.height);
             this.bgSprite.scale.set(scale);
         }
 
-        // Rеsize table
+        // Resize Table
         let tableTopY = centerY; 
 
         if (this.tableMesh) {
@@ -144,9 +171,8 @@ export class Game {
             tableTopY = this.tableMesh.y - (this.tableMesh.texture.height * tableScale * 0.5);
         }
 
-        // Rеsize cards 
+        // Resize Cards
         const logicalWidth = 1100; 
-        
         let cardScale = ((width * 0.9) / logicalWidth) * 0.22; 
         
         if (cardScale > 0.23) cardScale = 0.23; 
@@ -161,39 +187,66 @@ export class Game {
             card.setPerspective(0.12); 
         });
 
-        // UI
-        const bottomY = height - (isMobile ? 120 : 80);
+        // --- UI RESIZING ---
+        const bottomY = height - (isMobile ? 80 : 80);
         
+        // 1. Промяна: Намаляваме леко мащаба на бутоните, за да има повече място
+        const btnScaleMobile = 0.35; 
+        const btnScaleDesktop = 0.60; // Беше 0.65+
+        const currentBtnScale = isMobile ? btnScaleMobile : btnScaleDesktop;
+
+        // Play button малко по-голям от останалите
         if (this.playButton) {
             this.playButton.position.set(centerX, bottomY);
-            this.playButton.scale.set(isMobile ? 0.8 : 1);
+            this.playButton.scale.set(currentBtnScale + 0.1); 
         }
 
-        const sideOffset = isMobile ? 110 : 180; 
-        if (this.betButton) {
-            this.betButton.position.set(centerX - sideOffset, bottomY);
-            this.betButton.scale.set(isMobile ? 0.6 : 0.8);
-        }
+        // 2. Промяна: Увеличаваме разстоянието (Gap) значително
+        // За Desktop: 240px (беше 180px), за да ги раздалечим хубаво
+        // За Mobile: width * 0.21 (динамично, за да не излизат от екрана, но да са раздалечени)
+        const spacing = isMobile ? (width * 0.21) : 240; 
+
+        // 1. AUTO (Вдясно от Play)
         if (this.autoButton) {
-            this.autoButton.position.set(centerX + sideOffset, bottomY);
-            this.autoButton.scale.set(isMobile ? 0.6 : 0.8);
-        }
-        if (this.payTableButton) {
-            this.payTableButton.position.set(isMobile ? 60 : 100, 50);
-            this.payTableButton.scale.set(isMobile ? 0.6 : 0.8);
-        }
-        if (this.speedButton) {
-           this.speedButton.position.set(isMobile ? 60 : 100, 130);
-            this.speedButton.scale.set(isMobile ? 0.6 : 0.8);
+            this.autoButton.position.set(centerX + spacing, bottomY);
+            this.autoButton.scale.set(currentBtnScale);
         }
 
-        // PAYOUT text 
+        // 2. BET (Вляво от Play)
+        if (this.betButton) {
+            this.betButton.position.set(centerX - spacing, bottomY);
+            this.betButton.scale.set(currentBtnScale);
+        }
+
+        // 3. SPEED (Вляво от Bet)
+        if (this.speedButton) {
+           // Още една стъпка наляво.
+           this.speedButton.position.set(centerX - (spacing * 2), bottomY);
+           this.speedButton.scale.set(currentBtnScale);
+        }
+
+        // 4. PayTable (По-малък и по-надясно)
+        if (this.payTableButton) {
+            const payTableX = isMobile ? 60 : 120;
+            const payTableY = isMobile ? 50 : 80;
+            this.payTableButton.position.set(payTableX, payTableY);
+            const payTableScale = isMobile ? 0.3 : 0.4; 
+            this.payTableButton.scale.set(payTableScale);
+        }
+
+        // Result Text
         if (this.resultText) {
             const distAboveCards = (isMobile ? 200 : 350) * cardScale * 2.8;
             const textY = (tableTopY - liftCardsUp) - distAboveCards - 50; 
-            
             this.resultText.position.set(centerX, textY); 
             this.resultText.style.fontSize = isMobile ? 40 : 60;
+        }
+
+        // Bet Text (Следва позицията на Bet бутона)
+        if (this.currentBetText) {
+            const betBtnX = centerX - spacing;
+            this.currentBetText.position.set(betBtnX, bottomY - (isMobile ? 50 : 70));
+            this.currentBetText.style.fontSize = isMobile ? 18 : 24;
         }
 
         if (this.payTablePopup) {
@@ -218,30 +271,47 @@ export class Game {
     }
 
     private initUI() {
-        this.playButton = this.createButton("PLAY", 0xFFD700, 180, 70, 30);
+        // --- PLAY Button ---
+        this.playButton = this.createButton('btn_play'); 
         this.playButton.on('pointerdown', () => {
             if (this.isAutoPlaying) this.toggleAuto();
             else this.startRound();
         });
         this.uiContainer.addChild(this.playButton);
 
-        const initialBet = BET_OPTIONS[this.currentBetIndex];
-        this.betButton = this.createButton(`BET: $${initialBet}`, 0xFFD700, 140, 60, 20); 
+        // --- BET Button ---
+        this.betButton = this.createButton('btn_bet'); 
         this.betButton.on('pointerdown', () => this.cycleBet());
         this.uiContainer.addChild(this.betButton);
 
-        this.autoButton = this.createButton("AUTO: OFF", 0xFF6347, 140, 60, 20); 
+        // Text над BET бутона
+        const initialBet = BET_OPTIONS[this.currentBetIndex];
+        this.currentBetText = new PIXI.Text({
+            text: `BET: $${initialBet}`,
+            style: {
+                fontFamily: 'Arial', fontSize: 24, fontWeight: 'bold',
+                fill: 0xFFD700, stroke: { width: 4, color: 0x000000 }, align: 'center'
+            }
+        });
+        this.currentBetText.anchor.set(0.5);
+        this.uiContainer.addChild(this.currentBetText);
+
+        // --- AUTO Button ---
+        this.autoButton = this.createButton('btn_auto'); 
         this.autoButton.on('pointerdown', () => this.toggleAuto());
         this.uiContainer.addChild(this.autoButton);
 
-        this.speedButton = this.createButton("SPEED: 1x", 0xFFD700, 150, 50, 20);
+        // --- SPEED Button ---
+        this.speedButton = this.createButton('btn_speed');
         this.speedButton.on('pointerdown', () => this.cycleSpeed());
         this.uiContainer.addChild(this.speedButton);
 
-        this.payTableButton = this.createButton("PAY TABLE", 0xBD9A7A, 150, 50, 20);
+        // --- PAYTABLE Button ---
+        this.payTableButton = this.createButton('btn_paytable');
         this.payTableButton.on('pointerdown', () => this.togglePayTable());
         this.uiContainer.addChild(this.payTableButton);
 
+        // Result Text
         this.resultText = new PIXI.Text({
             text: "", 
             style: {
@@ -255,74 +325,78 @@ export class Game {
         this.uiContainer.addChild(this.resultText);
     }
     
-    private createButton(label: string, color: number, w=200, h=70, fontSize=30): PIXI.Container {
+    private createButton(textureAlias: string): PIXI.Container {
         const btn = new PIXI.Container();
-        const bg = new PIXI.Graphics()
-            .roundRect(-w/2, -h/2, w, h, 15)
-            .fill(color)
-            .stroke({ width: 3, color: 0xFFFFFF });
-        
-        const txt = new PIXI.Text({ text: label, style: { fontSize, fontWeight: 'bold' } });
-        txt.anchor.set(0.5);
-        btn.addChild(bg, txt);
+        const sprite = PIXI.Sprite.from(textureAlias);
+        sprite.anchor.set(0.5);
+        btn.addChild(sprite);
         btn.interactive = true;
         btn.cursor = 'pointer';
+        
+        btn.on('pointerdown', () => { btn.scale.x *= 0.95; btn.scale.y *= 0.95; });
+        btn.on('pointerup', () => { btn.scale.x /= 0.95; btn.scale.y /= 0.95; });
+        btn.on('pointerupoutside', () => { btn.scale.x /= 0.95; btn.scale.y /= 0.95; });
+
         return btn;
     }
     
-    private updateButtonText(btnContainer: PIXI.Container, text: string, color?: number) {
-        const txt = btnContainer.getChildAt(1) as PIXI.Text;
-        if (txt) txt.text = text;
-        if (color !== undefined) {
-            const bg = btnContainer.getChildAt(0) as PIXI.Graphics;
-            bg.clear()
-              .roundRect(-bg.width/2, -bg.height/2, bg.width, bg.height, 15)
-              .fill(color)
-              .stroke({ width: 3, color: 0xFFFFFF });
+    private updateButtonTexture(btnContainer: PIXI.Container, textureAlias: string) {
+        const sprite = btnContainer.getChildAt(0) as PIXI.Sprite;
+        if (sprite) {
+            sprite.texture = PIXI.Assets.get(textureAlias);
         }
     }
 
     private cycleBet() {
         if (this.state !== GameState.IDLE && this.state !== GameState.RESULT) return;
         if (this.isAutoPlaying) this.toggleAuto();
+        
         this.currentBetIndex++;
         if (this.currentBetIndex >= BET_OPTIONS.length) this.currentBetIndex = 0;
+        
         const newBet = BET_OPTIONS[this.currentBetIndex];
-        this.updateButtonText(this.betButton, `BET: $${newBet}`);
+        this.currentBetText.text = `BET: $${newBet}`;
     }
 
     private cycleSpeed() {
         if (this.state !== GameState.IDLE && this.state !== GameState.RESULT) return;
+        
         if (this.currentSpeed === GameSpeed.NORMAL) {
             this.currentSpeed = GameSpeed.FAST;
-            this.updateButtonText(this.speedButton, "SPEED: 2x");
         } else if (this.currentSpeed === GameSpeed.FAST) {
             this.currentSpeed = GameSpeed.INSTANT;
-            this.updateButtonText(this.speedButton, "SPEED: MAX");
         } else {
             this.currentSpeed = GameSpeed.NORMAL;
-            this.updateButtonText(this.speedButton, "SPEED: 1x");
         }
+        
+        const sprite = this.speedButton.getChildAt(0) as PIXI.Sprite;
+        if (this.currentSpeed === GameSpeed.NORMAL) sprite.tint = 0xFFFFFF;
+        if (this.currentSpeed === GameSpeed.FAST) sprite.tint = 0xAAAAFF; 
+        if (this.currentSpeed === GameSpeed.INSTANT) sprite.tint = 0xFFAAAA; 
     }
 
     private toggleAuto() {
         this.isAutoPlaying = !this.isAutoPlaying;
+        const autoSprite = this.autoButton.getChildAt(0) as PIXI.Sprite;
+
         if (this.isAutoPlaying) {
-            this.updateButtonText(this.autoButton, "AUTO: ON", 0x32CD32);
-            this.updateButtonText(this.playButton, "STOP AUTO"); 
+            autoSprite.tint = 0x77FF77; 
+            this.updateButtonTexture(this.playButton, "btn_stop"); 
             if (this.state === GameState.IDLE) this.startRound();
         } else {
-            this.updateButtonText(this.autoButton, "AUTO: OFF", 0xFF6347); 
-            this.updateButtonText(this.playButton, "PLAY");
+            autoSprite.tint = 0xFFFFFF;
+            this.updateButtonTexture(this.playButton, "btn_play");
         }
     }
     
     private initPayTablePopup() {
         this.payTablePopup = new PIXI.Container();
         this.payTablePopup.visible = false;
-        const bg = new PIXI.Graphics().rect(0, 0, 400, 500).fill({ color: 0x000000, alpha: 0.9 });
+        const bg = new PIXI.Graphics().rect(0, 0, 400, 500).fill({ color: 0x000000, alpha: 0.95, });
+        bg.stroke({ width: 2, color: 0xFFD700 });
+        
         this.payTablePopup.addChild(bg);
-        const title = new PIXI.Text({ text: "MULTIPLIERS", style: { fill: 0xFFFFFF, fontSize: 24 } });
+        const title = new PIXI.Text({ text: "MULTIPLIERS", style: { fill: 0xFFFFFF, fontSize: 24, fontWeight: 'bold' } });
         title.position.set(20, 20);
         this.payTablePopup.addChild(title);
         
@@ -361,6 +435,7 @@ export class Game {
 
         this.uiContainer.children.forEach(c => { 
             if (c === this.resultText) return;
+            if (c === this.payTablePopup) return; 
 
             if (this.isAutoPlaying && (c === this.playButton || c === this.autoButton)) {
                 c.visible = true;
@@ -368,7 +443,8 @@ export class Game {
             }
             c.visible = false; 
         }); 
-
+        
+        this.payTablePopup.visible = false;
         this.resultText.text = "";
         this.cards.forEach(c => c.reset());
 
@@ -402,13 +478,15 @@ export class Game {
 
         setTimeout(() => {
             this.state = GameState.IDLE;
-            this.uiContainer.children.forEach(c => c.visible = true);
-            this.payTablePopup.visible = false; 
+            this.uiContainer.children.forEach(c => {
+                 if(c !== this.payTablePopup) c.visible = true; 
+            });
+            
             if (this.isAutoPlaying) {
                 this.startRound();
             } else {
                 this.playButton.visible = true;
-                this.updateButtonText(this.playButton, "PLAY");
+                this.updateButtonTexture(this.playButton, "btn_play");
             }
         }, waitTime);
     }
