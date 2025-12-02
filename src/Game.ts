@@ -38,7 +38,6 @@ export class Game {
     private app: PIXI.Application;
     
     private bgSprite: PIXI.Sprite | null = null;
-
     private camera: Camera3d;
     private world: Container3d; 
     private tableSprite: Sprite3d | null = null;
@@ -64,12 +63,12 @@ export class Game {
         this.app = app;
         this.uiContainer = new PIXI.Container();
         
-        // camera setup
+        // camera settings
         this.camera = new Camera3d();
         this.camera.setPlanes(400, 10, 10000); 
         this.camera.position.set(app.screen.width / 2, app.screen.height / 2);
         this.camera.sortableChildren = true; 
-
+       
         this.world = new Container3d();
         this.camera.addChild(this.world);
 
@@ -108,12 +107,10 @@ export class Game {
     }
 
     private initScene() {
-        // Background 
         this.bgSprite = PIXI.Sprite.from('bg_room');
         this.bgSprite.anchor.set(0.5);
         this.app.stage.addChildAt(this.bgSprite, 0);
-
-        // Table 
+ 
         const tableTex = PIXI.Assets.get('table_mesh');
         this.tableSprite = new Sprite3d(tableTex);
         this.tableSprite.anchor.set(0.5, 0.5); 
@@ -136,32 +133,34 @@ export class Game {
 
         this.camera.position.set(centerX, centerY);
 
-        // table settings
+        // Table settings
         if (this.tableSprite) {
             const tableScale = isMobile ? 1.8 : 5.2; 
-
+            
             this.tableSprite.scale3d.x = tableScale;
             this.tableSprite.scale3d.y = tableScale;
             this.tableSprite.scale3d.z = tableScale;
+
             this.tableSprite.position3d.y = isMobile ? 150 : 300; 
             this.tableSprite.position3d.z = 800; 
         }
 
-        // cards settings
+        // Cards settings
         const gap = isMobile ? 150 : 200; 
-        const cardsY = isMobile ? 65 : 105; 
+        const cardsY = isMobile ? 60 : 100; 
 
         this.cards.forEach((card, i) => {
             card.position3d.x = (i - 1) * gap;
             card.position3d.y = cardsY;
             card.position3d.z = 0; 
-            const s = isMobile ? 0.16 : 0.18;
+            card.euler.x = -0.20;
+
+            const s = isMobile ? 0.14 : 0.17;
             card.scale3d.x = s;
             card.scale3d.y = s;
             card.scale3d.z = s;
         });
 
-        // UI settings
         const bottomY = height - (isMobile ? 60 : 80);
         const btnScaleMobile = 0.30; 
         const btnScaleDesktop = 0.50; 
